@@ -39,7 +39,7 @@ com.tcl.ui_mediaCenter                 # re-enable to play media from USB drives
 com.tcl.UpdatePeripheral               # re-enable to update a TCL soundbar
 android.autoinstalls.config.google.gtvpai
 com.google.android.feedback
-com.google.android.marvin.talkback
+# com.google.android.marvin.talkback   # TalkBack screen reader: kept by default, uncomment only if nobody needs it
 com.google.android.apps.tv.dreamx      # ambient mode screensaver, see quirks above
 com.google.android.tv.remote.service   # Google TV phone-app remote
 
