@@ -25,6 +25,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewTreeObserver;
 import android.view.animation.AnimationUtils;
 import android.view.animation.LayoutAnimationController;
 import android.widget.FrameLayout;
@@ -77,6 +78,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** App of the last focused tile, so focus follows it when the app list changes. */
     private static String lastFocusedKey;
     private float density;
+    /** Focus request waiting for the grid's next layout or for a scroll to settle; at most one at a time. */
+    private ViewTreeObserver.OnGlobalLayoutListener pendingLayoutFocus;
+    private RecyclerView.OnScrollListener pendingScrollFocus;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     /** Refreshes the network pill when the connection changes: at boot Wi-Fi often connects after Home is shown. */
@@ -216,6 +220,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onPause() {
         super.onPause();
         handler.removeCallbacks(minuteTick);
+        cancelPendingFocus();
     }
 
     @Override
@@ -352,28 +357,62 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     private void focusTile(int position) {
+        cancelPendingFocus();
         if (adapter.getItemCount() == 0) return;
         final int pos = Math.max(0, Math.min(position, adapter.getItemCount() - 1));
-        RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
-        if (vh != null) {
-            View card = vh.itemView.findViewById(R.id.card);
-            // Already focused (e.g. back from an app): no focus change fires, so restore the glass by hand.
-            if (card.isFocused()) onTileFocused(pos, card);
-            else card.requestFocus();
+        if (grid.hasPendingAdapterUpdates()) {
+            // The list changed (or was never laid out, e.g. a fresh start) and the tiles are not bound yet:
+            // retry once the next layout has placed them.
+            pendingLayoutFocus = new ViewTreeObserver.OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    cancelPendingFocus();
+                    if (grid.hasPendingAdapterUpdates()) focusLoadedTile(pos);
+                    else focusTile(pos);
+                }
+            };
+            grid.getViewTreeObserver().addOnGlobalLayoutListener(pendingLayoutFocus);
+            grid.requestLayout();
             return;
         }
-        // Not laid out yet: scroll there, then focus once the scroll settles.
-        grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
+        if (focusLoadedTile(pos)) return;
+        // Laid out but off screen: scroll there, then focus once the scroll settles. The scroll always has a
+        // distance to cover here, so it ends with an idle state change.
+        pendingScrollFocus = new RecyclerView.OnScrollListener() {
             @Override
             public void onScrollStateChanged(@NonNull RecyclerView rv, int newState) {
                 if (newState != RecyclerView.SCROLL_STATE_IDLE) return;
-                rv.removeOnScrollListener(this);
-                RecyclerView.ViewHolder h = rv.findViewHolderForAdapterPosition(pos);
-                View target = h != null ? h.itemView.findViewById(R.id.card) : rv.getChildAt(0);
-                if (target != null) target.requestFocus();
+                cancelPendingFocus();
+                if (!focusLoadedTile(pos)) {
+                    View first = rv.getChildAt(0);
+                    if (first != null) first.requestFocus();
+                }
             }
-        });
+        };
+        grid.addOnScrollListener(pendingScrollFocus);
         grid.smoothScrollToPosition(pos);
+    }
+
+    /** Focuses the tile at this position if its view is laid out; returns false when it is not. */
+    private boolean focusLoadedTile(int pos) {
+        RecyclerView.ViewHolder vh = grid.findViewHolderForAdapterPosition(pos);
+        if (vh == null) return false;
+        View card = vh.itemView.findViewById(R.id.card);
+        // Already focused (e.g. back from an app): no focus change fires, so restore the glass by hand.
+        if (card.isFocused()) onTileFocused(pos, card);
+        else card.requestFocus();
+        return true;
+    }
+
+    private void cancelPendingFocus() {
+        if (pendingLayoutFocus != null) {
+            grid.getViewTreeObserver().removeOnGlobalLayoutListener(pendingLayoutFocus);
+            pendingLayoutFocus = null;
+        }
+        if (pendingScrollFocus != null) {
+            grid.removeOnScrollListener(pendingScrollFocus);
+            pendingScrollFocus = null;
+        }
     }
 
     // ---- top bar ---------------------------------------------------------------------------------
@@ -451,6 +490,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // Some TVs (Sony) report every HDMI port as connected whether or not anything is plugged in,
             // so drop the HDMI status then. A TV with every port really in use loses it too.
             int hdmiPorts = 0, hdmiConnected = 0;
+            // HDMI-CEC devices (a streaming stick, a soundbar) get their own input under the port they are
+            // plugged into; list and count only the ports.
+            inputs.removeIf(info -> info.getParentId() != null);
             for (TvInputInfo info : inputs) {
                 if (!info.isPassthroughInput() || info.getType() != TvInputInfo.TYPE_HDMI) continue;
                 hdmiPorts++;
