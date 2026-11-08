@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.LauncherApps;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
@@ -20,6 +21,7 @@ import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -95,6 +97,38 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             handler.post(MainActivity.this::updateWifiLabel);
         }
     };
+    /** True when installed apps changed since the list was last loaded; the first resume always loads. */
+    private boolean appsChanged = true;
+    private boolean resumed;
+    /** Reloads the tiles when an app is installed, updated, removed, enabled or disabled. */
+    private final LauncherApps.Callback appsCallback = new LauncherApps.Callback() {
+        @Override
+        public void onPackageRemoved(String packageName, UserHandle user) {
+            onAppsChanged();
+        }
+
+        @Override
+        public void onPackageAdded(String packageName, UserHandle user) {
+            onAppsChanged();
+        }
+
+        @Override
+        public void onPackageChanged(String packageName, UserHandle user) {
+            onAppsChanged();
+        }
+
+        @Override
+        public void onPackagesAvailable(String[] packageNames, UserHandle user, boolean replacing) {
+            onAppsChanged();
+        }
+
+        @Override
+        public void onPackagesUnavailable(String[] packageNames, UserHandle user, boolean replacing) {
+            onAppsChanged();
+        }
+    };
+    /** Coalesces the bursts of callbacks one install or update produces. */
+    private final Runnable reloadApps = this::reloadAppsKeepingFocus;
     private final Runnable minuteTick = new Runnable() {
         @Override
         public void run() {
@@ -189,11 +223,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm != null) cm.registerDefaultNetworkCallback(networkCallback);
+        LauncherApps apps = getSystemService(LauncherApps.class);
+        if (apps != null) apps.registerCallback(appsCallback, handler);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         glassShown = false;
         glass.setAlpha(0f);
         heroShown = false;
@@ -202,7 +239,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         // Read these before reload(): rebinding can move focus to the first tile and overwrite them.
         final String returnKey = lastFocusedKey;
         final int returnSlot = lastFocused;
-        adapter.reload();
+        // Reload only when apps changed: loading every banner on each return from an app is slow on small TVs.
+        if (appsChanged) {
+            appsChanged = false;
+            adapter.reload();
+        }
         grid.scheduleLayoutAnimation();
         updateGreeting();
         updateWifiLabel();
@@ -219,7 +260,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         super.onPause();
+        resumed = false;
         handler.removeCallbacks(minuteTick);
+        handler.removeCallbacks(reloadApps);
         cancelPendingFocus();
     }
 
@@ -228,6 +271,29 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         super.onDestroy();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         if (cm != null) cm.unregisterNetworkCallback(networkCallback);
+        LauncherApps apps = getSystemService(LauncherApps.class);
+        if (apps != null) apps.unregisterCallback(appsCallback);
+        handler.removeCallbacks(reloadApps);
+    }
+
+    private void onAppsChanged() {
+        appsChanged = true;
+        if (!resumed) return;   // onResume reloads
+        handler.removeCallbacks(reloadApps);
+        handler.postDelayed(reloadApps, 500);
+    }
+
+    /** Reloads the tiles while Home is on screen, keeping focus on the same app (or slot, if it was removed). */
+    private void reloadAppsKeepingFocus() {
+        appsChanged = false;
+        final boolean onTile = glassShown;
+        final String key = lastFocusedKey;
+        final int slot = lastFocused;
+        adapter.reload();
+        if (onTile) {
+            int pos = adapter.positionOf(key);
+            focusTile(pos >= 0 ? pos : slot);
+        }
     }
 
     @Override
@@ -445,7 +511,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 String ssid = info != null ? info.getSSID() : null;
                 if (ssid != null) {
                     ssid = ssid.replace("\"", "").trim();
-                    if (!ssid.isEmpty() && !ssid.contains("unknown") && !ssid.equals("0x")) text = ssid;
+                    // "<unknown ssid>" is Android's placeholder when the name can't be read.
+                    if (!ssid.isEmpty() && !ssid.equalsIgnoreCase("<unknown ssid>") && !ssid.equals("0x")) text = ssid;
                 }
             }
         } catch (Exception ignored) {
