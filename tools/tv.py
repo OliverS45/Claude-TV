@@ -43,6 +43,10 @@ def connect(timeout=120):
 
 def main():
     args = sys.argv[1:]
+    if args and args[0] in ("--push", "--pull") and len(args) != 3:
+        sys.exit(f"usage: tv.py {args[0]} <source> <destination>")
+    if args and args[0] in ("--probe", "--batch") and len(args) != 1:
+        sys.exit(f"usage: tv.py {args[0]} (takes no other arguments)")
     dev = connect()
     if not args or args == ["--probe"]:
         for p in ("ro.product.model", "ro.product.device", "ro.build.version.release",
