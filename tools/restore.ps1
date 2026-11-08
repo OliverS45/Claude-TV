@@ -13,13 +13,15 @@ $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $repo = Split-Path -Parent $PSScriptRoot
 $List = (Resolve-Path $List).Path
 $py = Join-Path $repo 'tools\venv\Scripts\python.exe'
+if (-not (Test-Path $py)) { throw 'run: python -m venv tools\venv; tools\venv\Scripts\python.exe -m pip install -r tools\requirements.txt' }
 if (-not $TvHost) { throw 'pass -TvHost <tv ip> or set $env:TV_HOST' }
 $env:TV_HOST = $TvHost
 
 $pkgs = Get-Content $List | ForEach-Object { ($_ -replace '#.*$', '').Trim() } | Where-Object { $_ }
 $cmds = @($pkgs | ForEach-Object { "pm enable $_" }) + @(
     "pm enable $Stock",
-    "cmd package set-home-activity --user 0 $Stock",
+    # Resolve the stock HOME component on the TV (Android 9 needs pkg/activity, not just pkg).
+    "cmd package set-home-activity --user 0 `$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME $Stock | tail -n 1)",
     'settings put global window_animation_scale 1.0',
     'settings put global transition_animation_scale 1.0',
     'settings put global animator_duration_scale 1.0',

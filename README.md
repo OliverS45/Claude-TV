@@ -262,7 +262,7 @@ TV_HOST=192.168.1.50 STOCK_LAUNCHER=com.google.android.tvlauncher bash launcher/
 
 For the included TCL model, substitute `com.google.android.apps.tv.launcherx`.
 
-The Windows script checks upload/install failure and HOME output containing `Error` before disabling stock HOME. The Bash script batches device commands without validating each response; use the explicit installation sequence when you need to inspect results before disabling stock HOME.
+Both scripts stop before disabling stock HOME if the upload fails, `pm install` does not report `Success`, or selecting HOME prints `Error`. They do not check every response, so use the explicit installation sequence when you want to inspect each result yourself before disabling stock HOME.
 
 Windows can discover Android Studio's bundled JDK and default SDK location. Bash defaults target macOS; on Linux or Git Bash, set `JAVA_HOME` and `ANDROID_HOME` explicitly. An existing `launcher/local.properties` is not overwritten. Invoke PowerShell in a separate process as shown because the installer changes its working directory.
 
@@ -292,7 +292,7 @@ bash tools/restore.sh backup/debloat-reviewed.txt com.google.android.tvlauncher
 
 Both restore scripts re-enable listed packages and stock HOME, attempt to select stock HOME, and set all three global animation scales to `1.0`. They leave Claude TV installed. They do **not** restore previous settings, screensaver selection, permissions or disabled states. Inspect printed results: the batch client does not turn every Android command error into a failing exit code.
 
-Bash restore resolves the full HOME component. PowerShell passes the package alone, which may fail on firmware requiring a full component, including some Android 9 devices. Use the exact component saved in `backup/home-before.txt` in that case:
+Both restore scripts look up the stock launcher's full HOME component on the TV, which firmware such as some Android 9 devices requires. If that lookup fails, use the exact component saved in `backup/home-before.txt`:
 
 ```powershell
 # Replace the placeholder with the recorded package/activity component.

@@ -14,11 +14,14 @@ PY=../tools/venv/bin/python
 export MSYS_NO_PATHCONV=1
 APK=app/build/outputs/apk/debug/app-debug.apk
 "$PY" -I ../tools/b64push.py "$APK" /data/local/tmp/tvhome.apk
-printf '%s\n' \
-  "pm install -r /data/local/tmp/tvhome.apk" \
-  "rm -f /data/local/tmp/tvhome.apk" \
-  "pm grant com.gathin.tvhome android.permission.ACCESS_FINE_LOCATION 2>/dev/null; echo location-granted" \
-  "cmd package set-home-activity --user 0 com.gathin.tvhome/.MainActivity" \
-  "pm disable-user --user 0 $STOCK_LAUNCHER" \
-  | "$PY" -I ../tools/tv.py --batch
+TV() { "$PY" -I ../tools/tv.py "$@"; }
+# Check each step before touching the stock launcher, so a failed install never leaves the TV without a Home.
+OUT=$(TV "pm install -r /data/local/tmp/tvhome.apk; rm -f /data/local/tmp/tvhome.apk")
+echo "$OUT"
+case "$OUT" in *Success*) ;; *) echo "pm install failed; the stock launcher was left untouched" >&2; exit 1;; esac
+OUT=$(TV "cmd package set-home-activity --user 0 com.gathin.tvhome/.MainActivity")
+echo "$OUT"
+case "$OUT" in *Error*) echo "could not set the new launcher as home; the stock launcher was left untouched" >&2; exit 1;; esac
+TV "pm grant com.gathin.tvhome android.permission.ACCESS_FINE_LOCATION && echo location-granted || echo location-not-granted"
+TV "pm disable-user --user 0 $STOCK_LAUNCHER"
 echo "Installed. Press Home on the remote to see it."
