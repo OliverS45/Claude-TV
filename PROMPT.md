@@ -45,7 +45,7 @@ Work directly in this existing project. Do not clone or download another copy, m
 
 - Configure dock priorities, hidden tiles, columns and `live_tv_package`. Build with JDK 17 and SDK platform 34/build-tools 34.0.0, without changing project versions.
 - Upload the APK, check installation Success, and select `com.gathin.tvhome/.MainActivity` as HOME. Grant the existing location permission for Wi-Fi SSID display where supported.
-- Have me verify Home before disabling stock HOME. Prefer the README's explicit installation sequence: the Bash convenience installer does not validate every remote response before disabling stock HOME.
+- Have me verify Home before disabling stock HOME. Prefer the README's explicit installation sequence: the convenience installers check install and HOME results but not every remote response before disabling stock HOME.
 - Verify app launching, D-pad navigation, return focus, Settings and inputs. With my device authorization, use remote key injection and screenshots where useful. Report anything you cannot verify.
 
 ### Debloat after verification
@@ -59,7 +59,7 @@ Work directly in this existing project. Do not clone or download another copy, m
 
 - Confirm Home, streaming apps, inputs and retained features work. Do not redesign the launcher for unrelated preferences.
 - Give exact restore commands for my reviewed list and stock launcher. Explain that restore resets animation scales to 1.0 and leaves Claude TV installed.
-- Provide the saved full HOME component as a fallback for PowerShell restore on firmware that requires it. Document separate reversal for settings and screensaver changes.
+- Provide the saved full HOME component as a fallback if the restore scripts cannot resolve it. Document separate reversal for settings and screensaver changes.
 - Explain editing config.xml and rebuilding, re-enabling one package and switching debugging off after maintenance.
 - Report changed files, device changes, completed checks and limitations. Preserve original licenses and attribution.
 
